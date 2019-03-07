@@ -183,7 +183,7 @@ public class SqlSessionFactoryBuilder {
 }
 ```
 
-上面的 `1` 说的比较简单，下面用另一种方式来详细说明：
+上面的 `1` 和 `2` 说的比较简单，下面用另一种方式来详细说明：
 
 ```java
 /** 开始调用是**/
@@ -192,15 +192,73 @@ SqlSessionFactoryBuilder.build(Reader reader, String environment, Properties pro
 -- XPathParser.new
 --- XPathParser.createDocument(new InputSource(reader)) /**根据输入流创建Document对象，使用的是dom解析方式**/
 -- Configuration.new /** 创建Configuration对象，注册类型别名 **/
-- XMLConfigBuilder.parse /**使用xpath解析document对象**/
+- XMLConfigBuilder.parse /**使用xpath解析document对象，解析的是mybatis-config.xml文件**/
 -- XMLConfigBuilder.parseConfiguration /**解析mybatis-config.xml，把对应的数据存放到Configuration里面**/
 //下面有很多解析的节点:properties ,类型别名,插件,对象工厂,设置,环境,类型处理器,mapper映射器等，下面只看其中几个
 --- XMLConfigBuilder.pluginElement /**拦截器: 循环解析plugins有多少个子节点，使用反射创建Interceptor对象，然后设置properties，添加到configuration的拦截器中**/
 --- XMLConfigBuilder.mapperElement /**mapper映射器: 因为mappers标签的子标签有3种方式：1.resource 2.绝对路径 3.包名。加载class方法不同，都是获取class对象 **/
----- configuration.addMapper /****/
-
-
+---- configuration.addMapper /** 实际上调用的是mapperRegistery的addmapper **/
+----- MapperRegistery.addMapper /** 看该类是不是接口，是不是已经被注册过，然后class作为key，创建的mapper代理对象作为value，添加到映射中。后续是解析mapper.xml和mapper中的注解解析 ，最后移除掉不必要的方法**/
+DefaultSqlSessionFactory.build.DefaultSqlSessionFactory(Configuration).new
 ```
+
+大致逻辑:
+1. 解析 `mybatis-config.xml` 到 `Configuration`中。
+2. 在解析的过程中要初始化 `Configuration` ，properties ,类型别名,插件,对象工厂,设置,环境,类型处理器,mapper映射器等
+3. 在初始化 `Configuration` 的 `MapperRegistery` 时候还要进行解析 `mapper.xml` 和 `mapper`类，最后确保解析成功的 `mapper` class添加到映射表中
+4. 初始化 `Configuration` 后，创建默认的 `DefaultSqlSessionFactory` 
+
+
+
+**SqlSession的获取**
+
+通过IDE 进入到 `sqlSessionFactory.openSession();` 的`openSession` 方法
+因为上面获取的 `sqlSessionFactory`静态类型是`DefaultSqlSessionFactory` 所以调用
+
+```java
+public class DefaultSqlSessionFactory implements SqlSessionFactory {
+
+  private SqlSession openSessionFromDataSource(ExecutorType execType, TransactionIsolationLevel level, boolean autoCommit) {
+    Transaction tx = null;
+    try {
+      //获取环境信息
+      final Environment environment = configuration.getEnvironment();
+      //创建jdbc事务工厂，因为在解析mybatis-config.xml的时候创建的是JDBC的
+      final TransactionFactory transactionFactory = getTransactionFactoryFromEnvironment(environment);
+      //初始化jdbctx
+      tx = transactionFactory.newTransaction(environment.getDataSource(), level, autoCommit);
+      //创建执行器，默认获取的是简单执行器，同时可以通过装饰者模式可以增强执行器，也可以通过拦截器对执行器进行处理
+      final Executor executor = configuration.newExecutor(tx, execType);
+      //创建默认的sqlsession
+      return new DefaultSqlSession(configuration, executor, autoCommit);
+    } catch (Exception e) {
+      closeTransaction(tx); // may have fetched a connection so lets call close()
+      throw ExceptionFactory.wrapException("Error opening session.  Cause: " + e, e);
+    } finally {
+      ErrorContext.instance().reset();
+    }
+  }
+}
+```
+
+1. 获取事务 `Transaction` 主要获取数据库连接，操作事务的动作
+2. 创建执行器 `executor` 执行sql，解析sql的操作
+3. 创建 `SqlSession` sql会话，可以有缓存等
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
