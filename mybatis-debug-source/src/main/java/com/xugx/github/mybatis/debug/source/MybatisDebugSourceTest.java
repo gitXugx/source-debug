@@ -2,6 +2,7 @@ package com.xugx.github.mybatis.debug.source;
 
 import com.xugx.github.mybatis.debug.source.entity.User;
 import com.xugx.github.mybatis.debug.source.mapper.UserMapper;
+import com.xugx.github.mybatis.debug.source.proxy.MapperProxy;
 import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -20,7 +21,9 @@ public class MybatisDebugSourceTest {
 
     public  static void main(String[] args) throws IOException {
         query();
+//        testMapperProxy();
     }
+
 
 
 
@@ -37,6 +40,14 @@ public class MybatisDebugSourceTest {
 
         User user2=userMapper.query(1);
 //        sqlSession.commit();
+    }
+
+
+    public static void testMapperProxy(){
+        MapperProxy<UserMapper> userMapperMapperProxy = new MapperProxy<UserMapper>();
+        UserMapper mapper = userMapperMapperProxy.getMapper(UserMapper.class);
+        mapper.query(1);
+        System.out.println(mapper.toString());
     }
 
 
