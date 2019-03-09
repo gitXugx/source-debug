@@ -7,6 +7,8 @@ import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
+import org.junit.Before;
+import org.junit.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,32 +19,34 @@ import java.io.InputStream;
  * @copyright ：	Copyright 2019 yowits Corporation. All rights reserved.
  * @create ：2019/3/7 15:27
  */
+
 public class MybatisDebugSourceTest {
 
-    public  static void main(String[] args) throws IOException {
-//        query();
-//        testMapperProxy();
-        testCache();
-    }
+    private static SqlSessionFactory sqlSessionFactory;
 
-    public static void query() throws IOException {
+    @Before
+    public void init() throws IOException {
+
         String resource = "mybatis-config.xml";
         //读取配置文件成二进制流
         InputStream inputStream = Resources.getResourceAsStream(resource);
         //解析创建SqlSessionFactory
-        SqlSessionFactory sqlSessionFactory = new SqlSessionFactoryBuilder().build(inputStream);
+        sqlSessionFactory = new SqlSessionFactoryBuilder().build(inputStream);
+    }
+
+    @Test
+    public  void query() throws IOException {
         SqlSession sqlSession = sqlSessionFactory.openSession();
         UserMapper userMapper=sqlSession.getMapper(UserMapper.class);
         User user=userMapper.query(1);
-
         User user2=userMapper.query(1);
-//        sqlSession.commit();
     }
 
     /**
      * 测试代理类
      */
-    public static void testMapperProxy(){
+    @Test
+    public  void testMapperProxy(){
         MapperProxy<UserMapper> userMapperMapperProxy = new MapperProxy<UserMapper>();
         UserMapper mapper = userMapperMapperProxy.getMapper(UserMapper.class);
         mapper.query(1);
@@ -52,25 +56,16 @@ public class MybatisDebugSourceTest {
     /**
      * 测试缓存
      */
-    public static void testCache() throws IOException {
-        String resource = "mybatis-config.xml";
-        //读取配置文件成二进制流
-        InputStream resourceAsStream = Resources.getResourceAsStream(resource);
-        InputStream inputStream = resourceAsStream;
-        //解析创建SqlSessionFactory
-        SqlSessionFactory sqlSessionFactory = new SqlSessionFactoryBuilder().build(inputStream);
+    @Test
+    public  void testCache() throws IOException {
 
         SqlSession sqlSession = sqlSessionFactory.openSession();
         UserMapper userMapper=sqlSession.getMapper(UserMapper.class);
         User user=userMapper.query(1);
-//        UserMapper mapper1 = sqlSession.getMapper(UserMapper.class);
-//        mapper1.query(1);
-
+        sqlSession.close();
         SqlSession sqlSession2 = sqlSessionFactory.openSession();
         UserMapper mapper = sqlSession2.getMapper(UserMapper.class);
         User query = mapper.query(1);
-//        User user2=userMapper.query(1);
-//        sqlSession.commit();
     }
 
 }
