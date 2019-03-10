@@ -455,33 +455,42 @@ public class CachingExecutor implements Executor {
   public <E> List<E> query(MappedStatement ms, Object parameterObject, RowBounds rowBounds, ResultHandler resultHandler) throws SQLException {
     //替换掉对应的?
     BoundSql boundSql = ms.getBoundSql(parameterObject);
-    //根据ms和参数和分页参数和sql的hash拼装为key
+    //根据ms和参数和分页参数和sql的hash拼装为二级缓存的key
     CacheKey key = createCacheKey(ms, parameterObject, rowBounds, boundSql);
     //进行先查询缓存，查询不到在查询数据库
     return query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
   }
   public <E> List<E> query(MappedStatement ms, Object parameterObject, RowBounds rowBounds, ResultHandler resultHandler, CacheKey key, BoundSql boundSql)
       throws SQLException {
+    //这个是二级缓存     
     Cache cache = ms.getCache();
     if (cache != null) {
+      //该语句是否声明flushCache=true则清空缓存
       flushCacheIfRequired(ms);
-      if (ms.isUseCache() && resultHandler == null) {
+      if (ms.isUseCache() && resulstHandler == null) {
+        //存储过程判断
         ensureNoOutParams(ms, boundSql);
-        @SuppressWarnings("unchecked")
+        //获取二级缓存中的数据
         List<E> list = (List<E>) tcm.getObject(cache, key);
         if (list == null) {
+          //委托给真实的执行器来进行执行sql  
           list = delegate.query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
+          //存入到二级缓存中
           tcm.putObject(cache, key, list); // issue #578 and #116
         }
         return list;
       }
     }
+    //如果未开启缓存，则直接执行
     return delegate.query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
   }
-
 }
-
 ```
+使用二级缓存的基本逻辑:
+1. 生成cacheKey
+2. 从该MappedStatement中获取其cache，然后根据cacheKey获取其结果
+3. 如果未获取到，则直接调用委托的baseExecutor来执行sql
+4. 然后结果放入二级缓存
 
 
 

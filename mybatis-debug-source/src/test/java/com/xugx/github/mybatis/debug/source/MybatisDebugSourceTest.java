@@ -34,11 +34,16 @@ public class MybatisDebugSourceTest {
         sqlSessionFactory = new SqlSessionFactoryBuilder().build(inputStream);
     }
 
+    /**
+     * 一级缓存测试，当事务提交后会清除一级缓存
+     * @throws IOException
+     */
     @Test
     public  void query() throws IOException {
         SqlSession sqlSession = sqlSessionFactory.openSession();
         UserMapper userMapper=sqlSession.getMapper(UserMapper.class);
         User user=userMapper.query(1);
+        sqlSession.commit();
         User user2=userMapper.query(1);
     }
 
@@ -54,7 +59,7 @@ public class MybatisDebugSourceTest {
     }
 
     /**
-     * 测试缓存
+     * 测试二级缓存，二级缓存只有commit后才会进入到缓存，否则不会进入到缓存
      */
     @Test
     public  void testCache() throws IOException {
