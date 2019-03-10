@@ -424,7 +424,7 @@ public class MapperMethod {
 2. 设置映射参数
 3. `sqlession.selectone` 执行sql
 
-**执行sql**
+**二级缓存cachingExecutor**
 
 ```java
 public class DefaultSqlSession implements SqlSession {
@@ -445,8 +445,6 @@ public class DefaultSqlSession implements SqlSession {
 ```
 
 上面是获取到之前解析的 `MappedStatement` 和设置 `wrapCollection(parameter)` 。作为参数传给执行器的query方法
-
-
 
 
 ```java
@@ -491,6 +489,16 @@ public class CachingExecutor implements Executor {
 2. 从该MappedStatement中获取其cache，然后根据cacheKey获取其结果
 3. 如果未获取到，则直接调用委托的baseExecutor来执行sql
 4. 然后结果放入二级缓存
+
+
+**一级缓存**
+
+```java
+
+
+
+```
+
 
 
 
