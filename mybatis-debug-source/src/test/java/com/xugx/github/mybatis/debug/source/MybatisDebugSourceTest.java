@@ -95,4 +95,15 @@ public class MybatisDebugSourceTest {
         User query = mapper.query(1);
     }
 
+    @Test
+    public  void insert() throws IOException {
+        SqlSession sqlSession = sqlSessionFactory.openSession(true);
+        UserMapper userMapper=sqlSession.getMapper(UserMapper.class);
+        User user1 = new User();
+        user1.setName("testName");
+        userMapper.insert(user1);
+    }
+
+
+
 }

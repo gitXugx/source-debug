@@ -11,4 +11,7 @@ import com.xugx.github.mybatis.debug.source.entity.User;
 
 public interface UserMapper {
     User query(Integer id);
+
+    int insert(User user);
+
 }

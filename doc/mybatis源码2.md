@@ -3,14 +3,16 @@
 
 深入 `mybatis` 的前提就是从基础开始，先学会怎么用。 现在 `Spring` 和 `SpringBoot` 对 `mybatis` 的支持很友好，几乎不需要我们的配置就可以用。屏蔽了对 `mybatis` 的操作。下面就先从最基础的原生 `mybatis` 开始。
 
-**环境:**
+### 环境
 
 主要: JDK1.8 , mybatis 3.5.0 
 
 使用 `idea` 创建一个 `maven` 项目。
 
 `maven` 主要引入的jar 
-POM.xml:
+
+**POM.xml:**
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"

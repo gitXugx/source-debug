@@ -17,7 +17,7 @@ import java.io.InputStream;
  * @copyright ：	Copyright 2019 yowits Corporation. All rights reserved.
  * @create ：2019/3/7 15:27
  */
-public class MybatisDebugSourceTest {
+public class MybatisDebugSource {
 
     public  static void main(String[] args) throws IOException {
 //        query();
