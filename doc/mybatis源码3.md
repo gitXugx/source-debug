@@ -150,7 +150,9 @@ public class SimpleExecutor extends BaseExecutor {
       Configuration configuration = ms.getConfiguration();
       //创建 StatementHandler，解析了sql创建了parameterHandler resultSetHandler 等两个处理器，并执行插件
       StatementHandler handler = configuration.newStatementHandler(this, ms, parameter, RowBounds.DEFAULT, null, null);
+      //获取数据库连接代理，获取预处理代理对象并初始化，设置参数到sql指定的? 中
       stmt = prepareStatement(handler, ms.getStatementLog());
+      //执行更新sql，获取结果集代理对象进行处理
       return handler.update(stmt);
     } finally {
       closeStatement(stmt);
