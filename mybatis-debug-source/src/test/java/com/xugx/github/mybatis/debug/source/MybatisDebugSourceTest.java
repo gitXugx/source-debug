@@ -12,6 +12,8 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * @author ：ex-xugaoxiang001
@@ -35,16 +37,36 @@ public class MybatisDebugSourceTest {
     }
 
     /**
-     * 一级缓存测试，当事务提交后会清除一级缓存
+     * 一级缓存测试，当sqlsession提交后会清除一级缓存
      * @throws IOException
      */
     @Test
     public  void query() throws IOException {
-        SqlSession sqlSession = sqlSessionFactory.openSession();
+        SqlSession sqlSession = sqlSessionFactory.openSession(true);
         UserMapper userMapper=sqlSession.getMapper(UserMapper.class);
         User user=userMapper.query(1);
         sqlSession.commit();
         User user2=userMapper.query(1);
+    }
+
+    /**
+     * 多线程测试
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    @Test
+    public  void TestLevelOneCache() throws IOException, InterruptedException {
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+        UserMapper userMapper=sqlSession.getMapper(UserMapper.class);
+        Runnable runnable = ()-> {
+            User query = userMapper.query(1);
+        };
+
+        for (int i =0 ; i< 2; i++){
+            executorService.execute( runnable);
+        }
+        Thread.sleep(3000);
     }
 
     /**
@@ -59,7 +81,7 @@ public class MybatisDebugSourceTest {
     }
 
     /**
-     * 测试二级缓存，二级缓存只有commit后才会进入到缓存，否则不会进入到缓存
+     * 测试二级缓存，二级缓存只有sqlsession commit后才会进入到缓存，否则不会进入到缓存
      */
     @Test
     public  void testCache() throws IOException {

@@ -494,10 +494,116 @@ public class CachingExecutor implements Executor {
 **一级缓存**
 
 ```java
-
-
-
+public abstract class BaseExecutor implements Executor {
+  @Override
+  public <E> List<E> query(MappedStatement ms, Object parameter, RowBounds rowBounds, ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
+    ErrorContext.instance().resource(ms.getResource()).activity("executing a query").object(ms.getId());
+    if (closed) {
+      throw new ExecutorException("Executor was closed.");
+    }
+    //看该MappedStatement是否配置刷新
+    if (queryStack == 0 && ms.isFlushCacheRequired()) {
+      clearLocalCache();
+    }
+    List<E> list;
+    try {
+      queryStack++;
+      list = resultHandler == null ? (List<E>) localCache.getObject(key) : null;
+      if (list != null) {
+        //存储过程的处理
+        handleLocallyCachedOutputParameters(ms, key, parameter, boundSql);
+      } else {
+        //查询数据库
+        list = queryFromDatabase(ms, parameter, rowBounds, resultHandler, key, boundSql);
+      }
+    } finally {
+      queryStack--;
+    }
+    if (queryStack == 0) {
+      //延迟加载
+      for (DeferredLoad deferredLoad : deferredLoads) {
+        deferredLoad.load();
+      }
+      deferredLoads.clear();
+      if (configuration.getLocalCacheScope() == LocalCacheScope.STATEMENT) {
+        //如果是STATEMENT，清本地缓存
+        clearLocalCache();
+      }
+    }
+    return list;
+  }
+}
 ```
+1. 当 `mapper.xml` 配置 `flushCache="true"` 后，不论是一级缓存还是二级缓存都会被清理掉
+2. 先从一级缓存中获取查询结果，如果结果有则不需要在查询数据库
+3. 后续的延迟加载和如果是 `STATEMENT` 则清除缓存。`STATEMENT` 是不使用预编译sql
+
+如果同一个`sqlsession` 在多线程下，去查询时会出现一级缓存刚刚放入占位符，另外一个线程就取缓存，就会抛出 `PersistenceException`问题
+
+```java
+public abstract class BaseExecutor implements Executor {
+  //从数据库查
+  private <E> List<E> queryFromDatabase(MappedStatement ms, Object parameter, RowBounds rowBounds, ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
+    List<E> list;
+    //先向缓存中放入占位符，当多线程情况下会出现上面的问题
+    localCache.putObject(key, EXECUTION_PLACEHOLDER);
+    try {
+      //查询数据库，失败则删除缓存占位符
+      list = doQuery(ms, parameter, rowBounds, resultHandler, boundSql);
+    } finally {
+      //最后删除占位符
+      localCache.removeObject(key);
+    }
+    //加入缓存
+    localCache.putObject(key, list);
+    //如果是存储过程，OUT参数也加入缓存
+    if (ms.getStatementType() == StatementType.CALLABLE) {
+      localOutputParameterCache.putObject(key, parameter);
+    }
+    return list;
+  }
+}
+```
+查询 `queryFromDatabase` 该方法主要是创建一级缓存占位符
+
+1. 添加一级缓存占位符
+2. 查询数据库，不论成功还是失败，都将删除占位符
+3. 把该次查询的数据存放一级缓存中
+
+
+**query数据库**
+
+```java
+public class SimpleExecutor extends BaseExecutor {
+  @Override
+  public <E> List<E> doQuery(MappedStatement ms, Object parameter, RowBounds rowBounds, ResultHandler resultHandler, BoundSql boundSql) throws SQLException {
+    Statement stmt = null;
+    try {
+      //获取配置信息
+      Configuration configuration = ms.getConfiguration();
+      //主要RoutingStatementHandler 来进行适配处理: STATEMENT  PREPARED CALLABLE,并添加插件
+      StatementHandler handler = configuration.newStatementHandler(wrapper, ms, parameter, rowBounds, resultHandler, boundSql);
+      //先从datasource的连接池中获取代理连接。2. 获取Statement代理类，初始化一些设置 3.参数化，把对应的参数设置到对应的？
+      stmt = prepareStatement(handler, ms.getStatementLog());
+      //执行查询语句，处理结果集
+      return handler.query(stmt, resultHandler);
+    } finally {
+      closeStatement(stmt);
+    }
+  }
+}
+```
+上面为了准备`Statement`设置参数和信息
+1. 创建对应的`StatementHandler` 和添加对应的插件
+2. 获取数据库连接代理，创建 `Statement` 代理,初始化 `Statement`，设置占位符值
+3. 执行sql，处理结果集还是很复杂的
+
+
+
+
+
+
+
 
 
 
