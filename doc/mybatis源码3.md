@@ -142,7 +142,6 @@ public class CachingExecutor implements Executor {
 
 ```java
 public class SimpleExecutor extends BaseExecutor {
-
   public int doUpdate(MappedStatement ms, Object parameter) throws SQLException {
     Statement stmt = null;
     try {
@@ -159,8 +158,16 @@ public class SimpleExecutor extends BaseExecutor {
     }
   }
 }
-
 ```
+
+大致和query差不多
+
+1. 创建对应的 `handler` 和 `执行插件`
+2. 获取 `connection`代理和预处理代理，设置预处理参数
+3. 执行`sql` ,处理结果集
+
+
+
 
 
 
