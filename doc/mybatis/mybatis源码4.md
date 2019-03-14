@@ -1,4 +1,4 @@
-# mybatis核心问题
+# mybatis核心
 > `mybatis` 主要设计由 `configuration` 、`SqlSession` 、`Executor` 、`Handler` (`PreparedStatementHandler` 、 `DefaultParameterHandler`、`DefaultResultSetHandler`) 组成
 
 
