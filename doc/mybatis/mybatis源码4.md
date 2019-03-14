@@ -63,6 +63,17 @@
 
 
 
+## 设计模式
+
+1. 装饰者模式 : CachingExecutor
+2. 动态代理模式: MapperProxy、connection、PreparedStatement、ResultSet、Plugin...
+3. 委托模式: RoutingStatementHandler
+4. 模板方法: BaseExecutor
+5. 责任链模式: Plugin
+6. 建造者模式: CacheBuilder、MappedStatement ...
+7. 工厂模式: DefaultSqlSessionFactory、MapperProxyFactory
+
+
 
 
 
