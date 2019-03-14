@@ -10,6 +10,6 @@
         select * from t_user where id = #{id}
     </select>
     <insert id="insert" parameterType="com.xugx.github.mybatis.debug.source.entity.User" flushCache="true">
-        insert into t_user(name) value (#{name})ßßß
+        insert into t_user(name) value (#{name})
     </insert>
 </mapper>

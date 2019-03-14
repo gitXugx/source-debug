@@ -37,6 +37,49 @@
 
 
 
+## 流程
+
+下面是看源码后画的图:
+
+<div align="center"> <img src="https://github.com/gitXugx/doc-images/blob/master/images/mybatisSource/mybatis%E6%BA%90%E7%A0%81%E5%9B%BE.jpg" /> </div><br>
+
+
+1. `mybatis-config.xml` 和 `Mapper.xml` 文件主要依靠两个 `XmlConfigurationBuilder` 和 `XmlMapperBuilder` 然后生成 `Configuration`
+`Configuration` 包括 :
+**evn** ： 环境信息，主要包括 `TranscationFactory`和`DataSourceFactry` 
+**plugin**: 提供Mybatis的插件功能，主要使用代理模式实现
+**mapperRegister**: 创建 `mapperProxyFactory` 和 mapper.class的映射
+**properties**: 导入的properties文件变量
+**typeHandlers**: 类型处理器
+等多个配置
+
+2. 通过 `Configuration` 创建 `DefaultSqlSessionFactory` 
+3. 使用 `DefaultSqlSessionFactory` 生成 `SqlSessionFactoy` 主要由 `Configuration` 里的 `TranscationFactoy`和 `DataSourceFactory` 创建 `Transaction` 和 `DataSource` 然后通过 `Transcation` 和 `ExecutorType` 创建对应的执行器, 然后创建 `SqlSession` 当执行的时候实际是委托给 `Executor` 
+4. 获取 `Mapper` 方法，实际上获取的是 `Mapper`的代理对象，主要由 `MapperRegister` 来提供。
+5. 当调用 `Mapper` 代理对象的方法时，实际上最后执行命令的是 `Executor` ， `Executor` 提供一级缓存和二级缓存。二级缓存支持插件功能
+6. 通过 `Configuration` 创建 `PreparedStatementHandler` 然后获取 `Connection`代理对象，初始化 `statement` 和获取其代理对象，可使用插件
+7. 使用 `ParameterHandler` 来设置sql占位符，可使用插件
+8. 查询结束后使用 `ResultSetHandler` 对结果集代理进行处理，可使用插件
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
