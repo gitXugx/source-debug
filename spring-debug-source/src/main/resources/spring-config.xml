@@ -3,11 +3,10 @@
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
        xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
 
-
-
-    <bean id="simpleBean" class="com.xugx.github.spring.debug.bean.SimpleBean">
+    <bean id="simpleBean" class="com.xugx.github.spring.debug.bean.SimpleBean" >
         <property name="name" value="xugx"/>
         <property name="id" value="10"/>
     </bean>
+    <alias name="simpleBean" alias="simpleBean2"/>
 
 </beans>
