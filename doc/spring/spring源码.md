@@ -332,10 +332,11 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 		// then ultimately reset this.delegate back to its original (parent) reference.
 		// this behavior emulates a stack of delegates without actually necessitating one.
 		BeanDefinitionParserDelegate parent = this.delegate;
-        //填充解析beans的默认属性，然后调用监听器
+        //填充解析beans的默认属性，然后添加默认监听器
 		this.delegate = createDelegate(getReaderContext(), root, parent);
-
+        //默认命名空间
 		if (this.delegate.isDefaultNamespace(root)) {
+            //判断当前环境
 			String profileSpec = root.getAttribute(PROFILE_ATTRIBUTE);
 			if (StringUtils.hasText(profileSpec)) {
 				String[] specifiedProfiles = StringUtils.tokenizeToStringArray(
@@ -349,14 +350,169 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 				}
 			}
 		}
-
+        //前置解析接口 使用模板方法进行对doc root进行处理
 		preProcessXml(root);
+        //具体解析doc逻辑
 		parseBeanDefinitions(root, this.delegate);
+        //后置接口
 		postProcessXml(root);
 		this.delegate = parent;
 	}
 }
 ```
+
+上面做注册 `beandefinitions` 真正的解析是在 `parseBeanDefinitions` 方法中，其中也有模板方法 `preProcessXml` 、`postProcessXml` 可以让用户灵活处理doc
+
+
+1. 填充解析beans的默认属性，然后调用空的监听器
+2. 设置document的前置和后置钩子
+3. 解析beanDefinitions
+
+```java
+public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
+    //解析子节点，根据子节点来进行对应的解析
+	protected void parseBeanDefinitions(Element root, BeanDefinitionParserDelegate delegate) {
+		if (delegate.isDefaultNamespace(root)) {
+			NodeList nl = root.getChildNodes();
+			for (int i = 0; i < nl.getLength(); i++) {
+				Node node = nl.item(i);
+				if (node instanceof Element) {
+                    //空行也是一个node
+					Element ele = (Element) node;
+					if (delegate.isDefaultNamespace(ele)) {
+                        //默认的标签解析
+						parseDefaultElement(ele, delegate);
+					}
+					else {
+                        //自定义标签的解析
+						delegate.parseCustomElement(ele);
+					}
+				}
+			}
+		}
+		else {
+			delegate.parseCustomElement(root);
+		}
+	}
+}
+```
+上面主要做了1件事，循环子节点，找出对应的节点做出相应的解析。标签分为两种:
+1. 默认标签
+2. 自定义标签
+```java
+public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
+    private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate delegate) {
+        if (delegate.nodeNameEquals(ele, IMPORT_ELEMENT)) {
+            //import标签
+            importBeanDefinitionResource(ele);
+        } else if (delegate.nodeNameEquals(ele, ALIAS_ELEMENT)) {
+            //解析别名，实际上是别名作为key value是实际的名字
+            processAliasRegistration(ele);
+        } else if (delegate.nodeNameEquals(ele, BEAN_ELEMENT)) {
+            //解析了bean元素，并完成BeanDefinition的注册。
+            processBeanDefinition(ele, delegate);
+        } else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
+            // recurse
+            doRegisterBeanDefinitions(ele);
+        }
+    }
+}
+```
+作为bean怎么注册，只需要关注 `processBeanDefinition(ele, delegate);` 这段实现
+
+```java
+public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
+    protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
+        //先解析xml生成BeanDefinition，在用BeanDefinitionHolder封装BeanDefinition。
+        BeanDefinitionHolder bdHolder = delegate.parseBeanDefinitionElement(ele);
+        if (bdHolder != null) {
+            bdHolder = delegate.decorateBeanDefinitionIfRequired(ele, bdHolder);
+            try {
+                //注册BeanDefinition，完成beanName到BeanDefinition的映射，alias到beanName的映射。
+                BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
+            } catch (BeanDefinitionStoreException ex) {
+                getReaderContext().error("Failed to register bean definition with name '" +
+                        bdHolder.getBeanName() + "'", ele, ex);
+            }
+            // Send registration event.
+            getReaderContext().fireComponentRegistered(new BeanComponentDefinition(bdHolder));
+        }
+    }
+}
+```
+处理 `BeanDefinitions` 实际上是分为2步：
+1. parseBeanDefinitionElement解析成BeanDefinitionHolder也是重点需要看的
+2. 把之前解析注册的别名设置到BeanDfinitionHodler中
+3. 调用注册监听器
+
+```java
+public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
+
+    public BeanDefinitionHolder parseBeanDefinitionElement(Element ele, BeanDefinition containingBean) {
+        //获取id和name
+        String id = ele.getAttribute(ID_ATTRIBUTE);
+        String nameAttr = ele.getAttribute(NAME_ATTRIBUTE);
+
+        List<String> aliases = new ArrayList<String>();
+        if (StringUtils.hasLength(nameAttr)) {
+            String[] nameArr = StringUtils.tokenizeToStringArray(nameAttr, MULTI_VALUE_ATTRIBUTE_DELIMITERS);
+            aliases.addAll(Arrays.asList(nameArr));
+        }
+
+        String beanName = id;
+        //如果没有id，则取一个别名出来，作为beanName
+        if (!StringUtils.hasText(beanName) && !aliases.isEmpty()) {   
+            beanName = aliases.remove(0);
+            if (logger.isDebugEnabled()) {
+                logger.debug("No XML 'id' specified - using '" + beanName +
+                        "' as bean name and " + aliases + " as aliases");
+            }
+        }
+
+        if (containingBean == null) {
+            //校验是否以有相同名字的bean了
+            checkNameUniqueness(beanName, aliases, ele);
+        }
+        //解析xml将信息填充到BeanDefinition中，这里是一个GenericBeanDefinition。
+        AbstractBeanDefinition beanDefinition = parseBeanDefinitionElement(ele, beanName, containingBean);
+        if (beanDefinition != null) {
+             //没有beanName就生成一个
+            if (!StringUtils.hasText(beanName)) {            
+                try {
+                    if (containingBean != null) {
+                        beanName = BeanDefinitionReaderUtils.generateBeanName(
+                                beanDefinition, this.readerContext.getRegistry(), true);
+                    } else {
+                        beanName = this.readerContext.generateBeanName(beanDefinition);
+                        // Register an alias for the plain bean class name, if still possible,
+                        // if the generator returned the class name plus a suffix.
+                        // This is expected for Spring 1.2/2.0 backwards compatibility.
+                        String beanClassName = beanDefinition.getBeanClassName();
+                        if (beanClassName != null &&
+                                beanName.startsWith(beanClassName) && beanName.length() > beanClassName.length() &&
+                                !this.readerContext.getRegistry().isBeanNameInUse(beanClassName)) {
+                            aliases.add(beanClassName);
+                        }
+                    }
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Neither XML 'id' nor 'name' specified - " +
+                                "using generated bean name [" + beanName + "]");
+                    }
+                } catch (Exception ex) {
+                    error(ex.getMessage(), ele);
+                    return null;
+                }
+            }
+            String[] aliasesArray = StringUtils.toStringArray(aliases);
+            //将BeanDefinition包装成BeanDefinitionHolder
+            return new BeanDefinitionHolder(beanDefinition, beanName, aliasesArray);
+        }
+
+        return null;
+    }
+}
+```
+
 
 
 
