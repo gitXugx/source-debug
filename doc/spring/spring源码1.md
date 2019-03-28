@@ -418,7 +418,7 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
     }
 }
 ```
-作为bean怎么注册，只需要关注 `processBeanDefinition(ele, delegate);` 这段实现
+作为beanDefinition怎么填充的，只需要关注 `processBeanDefinition(ele, delegate);` 这段实现
 
 ```java
 public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
@@ -442,8 +442,9 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 ```
 处理 `BeanDefinitions` 实际上是分为2步：
 1. parseBeanDefinitionElement解析成BeanDefinitionHolder也是重点需要看的
-2. 把之前解析注册的别名设置到BeanDfinitionHodler中
+2. 注册bean到beanDefinitionRegister中，把之前解析注册的别名设置到BeanDfinitionHodler中
 3. 调用注册监听器
+
 
 ```java
 public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
@@ -480,13 +481,13 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
             if (!StringUtils.hasText(beanName)) {            
                 try {
                     if (containingBean != null) {
+                        //有内部bean的获取
                         beanName = BeanDefinitionReaderUtils.generateBeanName(
                                 beanDefinition, this.readerContext.getRegistry(), true);
                     } else {
+                        //获取beanName没有内部bean
                         beanName = this.readerContext.generateBeanName(beanDefinition);
-                        // Register an alias for the plain bean class name, if still possible,
-                        // if the generator returned the class name plus a suffix.
-                        // This is expected for Spring 1.2/2.0 backwards compatibility.
+                        //把beanName添加到别名中
                         String beanClassName = beanDefinition.getBeanClassName();
                         if (beanClassName != null &&
                                 beanName.startsWith(beanClassName) && beanName.length() > beanClassName.length() &&
@@ -513,9 +514,143 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 }
 ```
 
+`parseBeanDefinitionElement` 方法主要是对beanName的处理和 `beanDefinition` 的创建
+1. 获取beanName
+2. 校验之前是不是有过该名字的Bean
+3. 解析 document信息存入 `beanDefinition`
+4. 如果没有beanName则生成beanName
+5. 把 `BeanDefinition` 包装成 `BeanDefinitionHolder`
+
+```java
+public class BeanDefinitionParserDelegate {
+	public AbstractBeanDefinition parseBeanDefinitionElement(
+			Element ele, String beanName, BeanDefinition containingBean) {
+        //放入到栈中
+		this.parseState.push(new BeanEntry(beanName));
+		String className = null;
+        //获取class属性的值
+		if (ele.hasAttribute(CLASS_ATTRIBUTE)) {
+			className = ele.getAttribute(CLASS_ATTRIBUTE).trim();
+		}
+
+		try {
+			String parent = null;
+            //是否有父标签
+			if (ele.hasAttribute(PARENT_ATTRIBUTE)) {
+				parent = ele.getAttribute(PARENT_ATTRIBUTE);
+			}
+            //创建GenericBeanDefinition对象，设置父beanName和beanClassName
+			AbstractBeanDefinition bd = createBeanDefinition(className, parent);
+            //把bean对应属性值设置到GenericBeanDefinition中
+			parseBeanDefinitionAttributes(ele, beanName, containingBean, bd);
+			bd.setDescription(DomUtils.getChildElementValueByTagName(ele, DESCRIPTION_ELEMENT));
+            //解析meta标签
+			parseMetaElements(ele, bd);
+			parseLookupOverrideSubElements(ele, bd.getMethodOverrides());
+			parseReplacedMethodSubElements(ele, bd.getMethodOverrides());
+            //解析构造函数，比较复杂
+			parseConstructorArgElements(ele, bd);
+			parsePropertyElements(ele, bd);
+			parseQualifierElements(ele, bd);
+            //设置该bean属于哪个资源
+			bd.setResource(this.readerContext.getResource());
+			bd.setSource(extractSource(ele));
+
+			return bd;
+		}
+		catch (ClassNotFoundException ex) {
+			error("Bean class [" + className + "] not found", ele, ex);
+		}
+		catch (NoClassDefFoundError err) {
+			error("Class that bean class [" + className + "] depends on not found", ele, err);
+		}
+		catch (Throwable ex) {
+			error("Unexpected failure during bean definition parsing", ele, ex);
+		}
+		finally {
+            //解析完后进行一个弹栈
+			this.parseState.pop();
+		}
+
+		return null;
+	}
+}
+```
+
+`parseBeanDefinitionElement` 就是把bean标签中所有的属性和子标签解析到 `GenericBeanDefinition`对象中。比较复杂的解析是构造函数。
+解析完后,把 `GenericBeanDefinition` 包装成 `BeanDefinitionHolder`，通过`BeanDefinitionRegistry` 把对应的`BeanDefinitionHolder` 注册到 `beanFactoy`, 下面是具体的注册逻辑
 
 
+```java
+public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFactory
 
+    @Override
+    public void registerBeanDefinition(String beanName, BeanDefinition beanDefinition)
+            throws BeanDefinitionStoreException {
+
+        Assert.hasText(beanName, "Bean name must not be empty");
+        Assert.notNull(beanDefinition, "BeanDefinition must not be null");
+
+        if (beanDefinition instanceof AbstractBeanDefinition) {
+            try {
+                ((AbstractBeanDefinition) beanDefinition).validate();
+            } catch (BeanDefinitionValidationException ex) {
+                throw new BeanDefinitionStoreException(beanDefinition.getResourceDescription(), beanName,
+                        "Validation of bean definition failed", ex);
+            }
+        }
+
+        BeanDefinition oldBeanDefinition;
+
+        oldBeanDefinition = this.beanDefinitionMap.get(beanName);
+        if (oldBeanDefinition != null) {
+            //是否允许覆盖，不允许直接抛错
+            if (!isAllowBeanDefinitionOverriding()) {
+                throw new BeanDefinitionStoreException(beanDefinition.getResourceDescription(), beanName,
+                        "Cannot register bean definition [" + beanDefinition + "] for bean '" + beanName +
+                                "': There is already [" + oldBeanDefinition + "] bound.");
+            } else if (oldBeanDefinition.getRole() < beanDefinition.getRole()) {
+                // e.g. was ROLE_APPLICATION, now overriding with ROLE_SUPPORT or ROLE_INFRASTRUCTURE
+                if (this.logger.isWarnEnabled()) {
+                    this.logger.warn("Overriding user-defined bean definition for bean '" + beanName +
+                            "' with a framework-generated bean definition: replacing [" +
+                            oldBeanDefinition + "] with [" + beanDefinition + "]");
+                }
+            } else if (!beanDefinition.equals(oldBeanDefinition)) {
+                if (this.logger.isInfoEnabled()) {
+                    this.logger.info("Overriding bean definition for bean '" + beanName +
+                            "' with a different definition: replacing [" + oldBeanDefinition +
+                            "] with [" + beanDefinition + "]");
+                }
+            } else {
+                if (this.logger.isDebugEnabled()) {
+                    this.logger.debug("Overriding bean definition for bean '" + beanName +
+                            "' with an equivalent definition: replacing [" + oldBeanDefinition +
+                            "] with [" + beanDefinition + "]");
+                }
+            }
+        } else {
+            //之前没有注册过，添加beannames，
+            this.beanDefinitionNames.add(beanName);
+            //移除手动bean注册的
+            this.manualSingletonNames.remove(beanName);
+            this.frozenBeanDefinitionNames = null;
+        }
+        //bean声明的map中。
+        this.beanDefinitionMap.put(beanName, beanDefinition);
+        //如果是单例就把实例化的工厂移除掉
+        if (oldBeanDefinition != null || containsSingleton(beanName)) {
+            resetBeanDefinition(beanName);
+        }
+    }
+}
+```
+
+1. 是否允许新注册的beanDefinition覆盖老的，不允许直接抛错
+2. 把新注册的添加到 `beanfactory` 的`beanDefinitionMap`中
+3. 如果之前有`oldBeanDefinition` 需要把bean单例工厂中的单例对象移除掉。如果是原型应该会重新去创建一个。
+
+这步注册完beanDefinition后基本上完成了`xmlBeanFactory`的创建。
 
 
 
