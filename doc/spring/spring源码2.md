@@ -27,10 +27,12 @@ public class BeanFactoryTest {
 		final String beanName = transformedBeanName(name);
 		Object bean;
 
-		// Eagerly check singleton cache for manually registered singletons.
+		// 获取早已暴漏的对象
 		Object sharedInstance = getSingleton(beanName);
+        //不等于空证明sharedInstance已经处理好了
 		if (sharedInstance != null && args == null) {
 			if (logger.isDebugEnabled()) {
+                //如果还在创建说明循环引用了
 				if (isSingletonCurrentlyInCreation(beanName)) {
 					logger.debug("Returning eagerly cached instance of singleton bean '" + beanName +
 							"' that is not fully initialized yet - a consequence of a circular reference");
@@ -39,12 +41,12 @@ public class BeanFactoryTest {
 					logger.debug("Returning cached instance of singleton bean '" + beanName + "'");
 				}
 			}
+            //对factorybean的处理，返回工厂对象创建的bean
 			bean = getObjectForBeanInstance(sharedInstance, name, beanName, null);
 		}
 
 		else {
-			// Fail if we're already creating this bean instance:
-			// We're assumably within a circular reference.
+            //原型模式出现循环依赖则无法处理，则抛出异常
 			if (isPrototypeCurrentlyInCreation(beanName)) {
 				throw new BeanCurrentlyInCreationException(beanName);
 			}
@@ -179,25 +181,67 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	protected Object getSingleton(String beanName, boolean allowEarlyReference) {
         //从单例缓存中获取实例对象
 		Object singletonObject = this.singletonObjects.get(beanName);
-        //缓存未命中，并且该bean未在创建中
+        //缓存未命中，并且该bean在在创建中
 		if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
+            //在创建Singleton的时候首先获取singletonObjects锁，所以如果在创建中，这边会处于阻塞状态
 			synchronized (this.singletonObjects) {
+                //获取提前暴露的单例对象
 				singletonObject = this.earlySingletonObjects.get(beanName);
+                //如果获取的对象为null , 允许提前 暴露
 				if (singletonObject == null && allowEarlyReference) {
+                    //获取单例工厂里面的对象，然后移除singletonFactories工厂
 					ObjectFactory<?> singletonFactory = this.singletonFactories.get(beanName);
 					if (singletonFactory != null) {
 						singletonObject = singletonFactory.getObject();
+                        //加入提前暴露的单例
 						this.earlySingletonObjects.put(beanName, singletonObject);
 						this.singletonFactories.remove(beanName);
 					}
 				}
 			}
 		}
+        //该单例还未创建返回null
 		return (singletonObject != NULL_OBJECT ? singletonObject : null);
 	}
 }
 ```
 
+
+```java
+
+    protected Object getObjectForBeanInstance(
+            Object beanInstance, String name, String beanName, RootBeanDefinition mbd) {
+
+        // Don't let calling code try to dereference the factory if the bean isn't a factory.
+        if (BeanFactoryUtils.isFactoryDereference(name) && !(beanInstance instanceof FactoryBean)) {
+            throw new BeanIsNotAFactoryException(transformedBeanName(name), beanInstance.getClass());
+        }
+        //如果不是FactoryBean或者name以“&”开始，则返回 beanInstance,证明是正常的bean
+        if (!(beanInstance instanceof FactoryBean) || BeanFactoryUtils.isFactoryDereference(name)) {
+            return beanInstance;
+        }
+
+        //通过FactoryBean获取bean实例
+        Object object = null;
+        if (mbd == null) {
+            object = getCachedObjectForFactoryBean(beanName);
+        }
+        //如果为空，有可能是多例模式，或者单例对象第一次初始化
+        if (object == null) {
+            // Return bean instance from factory.
+            FactoryBean<?> factory = (FactoryBean<?>) beanInstance;
+            // Caches object obtained from FactoryBean if it is a singleton.
+            if (mbd == null && containsBeanDefinition(beanName)) {
+                mbd = getMergedLocalBeanDefinition(beanName);
+            }
+            boolean synthetic = (mbd != null && mbd.isSynthetic());
+            //调用getobject方法获取bean，在对缓存进行put的时候都需要进行加锁，以防覆盖的情况，执行postprocessafter方法，如果是单例则缓存到factorybeanobject中去，
+            object = getObjectFromFactoryBean(factory, beanName, !synthetic);
+        }
+        return object;
+    }
+
+```
 
 
 
