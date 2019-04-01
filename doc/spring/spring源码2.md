@@ -53,6 +53,7 @@ public class BeanFactoryTest {
 
 			// Check if bean definition exists in this factory.
 			BeanFactory parentBeanFactory = getParentBeanFactory();
+            //先从父容器中获取该bean。
 			if (parentBeanFactory != null && !containsBeanDefinition(beanName)) {
 				// Not found -> check parent.
 				String nameToLookup = originalBeanName(name);
@@ -67,6 +68,7 @@ public class BeanFactoryTest {
 			}
 
 			if (!typeCheckOnly) {
+                //标记bean正在创建中，并且移除合并的bean
 				markBeanAsCreated(beanName);
 			}
 
